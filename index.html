@@ -3,94 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image to PDF Converter</title>
+    <title>PDF Studio</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #1c1e21; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .card { background: #ffffff; width: 100%; max-width: 600px; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
-        h1 { font-size: 22px; margin-bottom: 20px; text-align: center; color: #050505; }
-        .file-label { display: block; border: 2px dashed #0066fe; border-radius: 8px; padding: 30px 10px; text-align: center; cursor: pointer; background: #f0f5ff; transition: 0.2s; }
-        .file-label:hover { background: #e4edff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; min-height: 100vh; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { font-size: 24px; font-weight: 700; color: #38bdf8; }
+        .controls { display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap; justify-content: center; }
+        .btn { padding: 12px 20px; font-size: 15px; font-weight: 600; border-radius: 8px; border: none; cursor: pointer; transition: 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background: #0284c7; color: white; }
+        .btn-primary:hover { background: #0369a1; }
+        .btn-success { background: #16a34a; color: white; }
+        .btn-success:hover { background: #15803d; }
+        .btn:disabled { background: #334155; color: #94a3b8; cursor: not-allowed; }
         input[type="file"] { display: none; }
-        .status { margin-top: 15px; font-size: 14px; text-align: center; color: #65676b; min-height: 20px; }
-        .progress-bar { width: 100%; background: #e4e6eb; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 15px; display: none; }
-        .progress-fill { width: 0%; height: 100%; background: #0066fe; transition: width 0.2s; }
-        button { width: 100%; padding: 14px; background: #0066fe; border: none; border-radius: 8px; color: #ffffff; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: 0.2s; }
-        button:disabled { background: #bcc0c4; cursor: not-allowed; }
-        #preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; max-height: 200px; overflow-y: auto; padding: 5px; border: 1px solid #e4e6eb; border-radius: 6px; }
-        #preview img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; }
+        .status { margin-bottom: 15px; font-size: 14px; color: #94a3b8; }
+        .preview-list { width: 100%; max-width: 650px; display: flex; flex-direction: column; gap: 20px; padding-bottom: 50px; }
+        .page-card { background: #1e293b; border-radius: 8px; padding: 15px; position: relative; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.3); cursor: grab; }
+        .page-card:active { cursor: grabbing; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; color: #94a3b8; }
+        .a4-container { width: 100%; aspect-ratio: 1 / 1.414; background: #ffffff; border-radius: 4px; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        .a4-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .delete-btn { background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h1>Image to PDF Converter</h1>
-    <label class="file-label" for="imageInput">
-        Click here to select images
-    </label>
-    <input type="file" id="imageInput" accept="image/*" multiple onchange="handleSelect()">
-    
-    <div id="preview"></div>
-    <div class="status" id="statusText">No files selected</div>
-    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
-
-    <button id="btn" onclick="processPDF()" disabled>Convert to PDF</button>
+<div class="header">
+    <h1>Modern PDF Converter</h1>
 </div>
 
+<div class="controls">
+    <label class="btn btn-primary" for="imageInput">Select Images</label>
+    <input type="file" id="imageInput" accept="image/*" multiple onchange="handleSelect(event)">
+    <button id="convertBtn" class="btn btn-success" onclick="processPDF()" disabled>Generate PDF</button>
+</div>
+
+<div class="status" id="statusText">No images added</div>
+
+<div class="preview-list" id="previewList"></div>
+
 <script>
-    let selectedFiles = [];
+    let fileList = [];
+    const previewList = document.getElementById('previewList');
+    const statusText = document.getElementById('statusText');
+    const convertBtn = document.getElementById('convertBtn');
 
-    function handleSelect() {
-        const input = document.getElementById('imageInput');
-        selectedFiles = Array.from(input.files);
-        const preview = document.getElementById('preview');
-        const status = document.getElementById('statusText');
-        const btn = document.getElementById('btn');
-        preview.innerHTML = '';
-
-        if (selectedFiles.length === 0) {
-            status.innerText = 'No files selected';
-            btn.disabled = true;
-            return;
+    new Sortable(previewList, {
+        animation: 150,
+        delay: 150,
+        delayOnTouchOnly: true,
+        ghostClass: 'sortable-ghost',
+        onEnd: function () {
+            updateOrderFromDOM();
         }
+    });
 
-        status.innerText = selectedFiles.length + ' image(s) selected';
-        btn.disabled = false;
-
-        selectedFiles.forEach((file) => {
+    function handleSelect(e) {
+        const files = Array.from(e.target.files);
+        files.forEach(file => {
+            const id = 'img_' + Math.random().toString(36).substr(2, 9);
             const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = document.createElement('img');
-                img.src = e.target.result;
-                preview.appendChild(img);
+            reader.onload = (event) => {
+                fileList.push({ id, file, src: event.target.result });
+                renderList();
             };
             reader.readAsDataURL(file);
         });
+        e.target.value = '';
+    }
+
+    function renderList() {
+        previewList.innerHTML = '';
+        if (fileList.length === 0) {
+            statusText.innerText = 'No images added';
+            convertBtn.disabled = true;
+            return;
+        }
+
+        statusText.innerText = fileList.length + ' page(s) • Hold and drag to reorder';
+        convertBtn.disabled = false;
+
+        fileList.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'page-card';
+            card.dataset.id = item.id;
+
+            card.innerHTML = `
+                <div class="page-header">
+                    <span>Page ${index + 1}</span>
+                    <button class="delete-btn" onclick="removeImage('${item.id}')">Remove</button>
+                </div>
+                <div class="a4-container">
+                    <img src="${item.src}">
+                </div>
+            `;
+            previewList.appendChild(card);
+        });
+    }
+
+    function removeImage(id) {
+        fileList = fileList.filter(item => item.id !== id);
+        renderList();
+    }
+
+    function updateOrderFromDOM() {
+        const newOrderIds = Array.from(previewList.children).map(child => child.dataset.id);
+        fileList.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
+        renderList();
     }
 
     async function processPDF() {
-        if (selectedFiles.length === 0) return;
+        if (fileList.length === 0) return;
+
+        convertBtn.disabled = true;
+        statusText.innerText = 'Processing PDF...';
 
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'mm', 'a4');
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
 
-        const btn = document.getElementById('btn');
-        const status = document.getElementById('statusText');
-        const progressBar = document.getElementById('progressBar');
-        const progressFill = document.getElementById('progressFill');
-
-        btn.disabled = true;
-        progressBar.style.display = 'block';
-
-        for (let i = 0; i < selectedFiles.length; i++) {
-            status.innerText = 'Processing image ' + (i + 1) + ' of ' + selectedFiles.length;
-            progressFill.style.width = Math.round(((i + 1) / selectedFiles.length) * 100) + '%';
-
-            const file = selectedFiles[i];
-            const dataUrl = await resizeImageIfNeeded(file);
+        for (let i = 0; i < fileList.length; i++) {
+            statusText.innerText = `Processing page ${i + 1} of ${fileList.length}...`;
+            const dataUrl = await resizeImageIfNeeded(fileList[i].file);
 
             if (i > 0) pdf.addPage();
 
@@ -107,15 +145,13 @@
             const yOffset = (pageHeight - pdfHeight) / 2;
 
             pdf.addImage(dataUrl, 'JPEG', xOffset, yOffset, pdfWidth, pdfHeight, undefined, 'FAST');
-            
             await new Promise(r => setTimeout(r, 10));
         }
 
-        status.innerText = 'Generating PDF file...';
+        statusText.innerText = 'Downloading PDF...';
         pdf.save('document.pdf');
-        status.innerText = 'Completed!';
-        btn.disabled = false;
-        setTimeout(() => { progressBar.style.display = 'none'; progressFill.style.width = '0%'; }, 2000);
+        statusText.innerText = 'Completed!';
+        convertBtn.disabled = false;
     }
 
     function resizeImageIfNeeded(file) {
@@ -153,5 +189,4 @@
 </script>
 
 </body>
-  </html>
-  
+</html>
