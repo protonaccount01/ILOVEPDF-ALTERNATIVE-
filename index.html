@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to PDF Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #1c1e21; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .card { background: #ffffff; width: 100%; max-width: 600px; padding: 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+        h1 { font-size: 22px; margin-bottom: 20px; text-align: center; color: #050505; }
+        .file-label { display: block; border: 2px dashed #0066fe; border-radius: 8px; padding: 30px 10px; text-align: center; cursor: pointer; background: #f0f5ff; transition: 0.2s; }
+        .file-label:hover { background: #e4edff; }
+        input[type="file"] { display: none; }
+        .status { margin-top: 15px; font-size: 14px; text-align: center; color: #65676b; min-height: 20px; }
+        .progress-bar { width: 100%; background: #e4e6eb; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 15px; display: none; }
+        .progress-fill { width: 0%; height: 100%; background: #0066fe; transition: width 0.2s; }
+        button { width: 100%; padding: 14px; background: #0066fe; border: none; border-radius: 8px; color: #ffffff; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: 0.2s; }
+        button:disabled { background: #bcc0c4; cursor: not-allowed; }
+        #preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; max-height: 200px; overflow-y: auto; padding: 5px; border: 1px solid #e4e6eb; border-radius: 6px; }
+        #preview img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Image to PDF Converter</h1>
+    <label class="file-label" for="imageInput">
+        Click here to select images
+    </label>
+    <input type="file" id="imageInput" accept="image/*" multiple onchange="handleSelect()">
+    
+    <div id="preview"></div>
+    <div class="status" id="statusText">No files selected</div>
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+
+    <button id="btn" onclick="processPDF()" disabled>Convert to PDF</button>
+</div>
+
+<script>
+    let selectedFiles = [];
+
+    function handleSelect() {
+        const input = document.getElementById('imageInput');
+        selectedFiles = Array.from(input.files);
+        const preview = document.getElementById('preview');
+        const status = document.getElementById('statusText');
+        const btn = document.getElementById('btn');
+        preview.innerHTML = '';
+
+        if (selectedFiles.length === 0) {
+            status.innerText = 'No files selected';
+            btn.disabled = true;
+            return;
+        }
+
+        status.innerText = selectedFiles.length + ' image(s) selected';
+        btn.disabled = false;
+
+        selectedFiles.forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                preview.appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function processPDF() {
+        if (selectedFiles.length === 0) return;
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        const btn = document.getElementById('btn');
+        const status = document.getElementById('statusText');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+
+        btn.disabled = true;
+        progressBar.style.display = 'block';
+
+        for (let i = 0; i < selectedFiles.length; i++) {
+            status.innerText = 'Processing image ' + (i + 1) + ' of ' + selectedFiles.length;
+            progressFill.style.width = Math.round(((i + 1) / selectedFiles.length) * 100) + '%';
+
+            const file = selectedFiles[i];
+            const dataUrl = await resizeImageIfNeeded(file);
+
+            if (i > 0) pdf.addPage();
+
+            const imgProps = pdf.getImageProperties(dataUrl);
+            let pdfWidth = pageWidth;
+            let pdfHeight = (imgProps.height * pageWidth) / imgProps.width;
+
+            if (pdfHeight > pageHeight) {
+                pdfHeight = pageHeight;
+                pdfWidth = (imgProps.width * pageHeight) / imgProps.height;
+            }
+
+            const xOffset = (pageWidth - pdfWidth) / 2;
+            const yOffset = (pageHeight - pdfHeight) / 2;
+
+            pdf.addImage(dataUrl, 'JPEG', xOffset, yOffset, pdfWidth, pdfHeight, undefined, 'FAST');
+            
+            await new Promise(r => setTimeout(r, 10));
+        }
+
+        status.innerText = 'Generating PDF file...';
+        pdf.save('document.pdf');
+        status.innerText = 'Completed!';
+        btn.disabled = false;
+        setTimeout(() => { progressBar.style.display = 'none'; progressFill.style.width = '0%'; }, 2000);
+    }
+
+    function resizeImageIfNeeded(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxDimension = 2048;
+
+                    if (width > maxDimension || height > maxDimension) {
+                        if (width > height) {
+                            height = Math.round((height * maxDimension) / width);
+                            width = maxDimension;
+                        } else {
+                            width = Math.round((width * maxDimension) / height);
+                            height = maxDimension;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+</script>
+
+</body>
+  </html>
+  
